@@ -1,37 +1,44 @@
 import requests
-import json
+import pandas as pd
+from datetime import datetime
 
 
-def test_smard_connection():
-    # 4068 is the SMARD filter code for Wind Onshore generation.
-    # 1001 is the region code for Germany.
-    url = "https://www.smard.de/app/chart_data/4067/DE/index_quarterhour.json"
+def get_latest_wind_data():
+    # Step 1: Get the list of available timestamps
+    index_url = "https://www.smard.de/app/chart_data/4067/DE/index_quarterhour.json"
+    headers = {"Accept": "application/json"}
 
-    headers = {
-        "Accept": "application/json"
-    }
+    print("Fetching timestamp index...")
+    index_response = requests.get(index_url, headers=headers)
+    timestamps = index_response.json().get("timestamps", [])
 
-    print("Initiating connection to SMARD.de API...")
+    if not timestamps:
+        print("Error: No timestamps found.")
+        return
 
-    try:
-        response = requests.get(url, headers=headers)
+    # Step 2: Extract the most recent timestamp (the last one in the list)
+    latest_timestamp = timestamps[-1]
+    print(f"Latest timestamp ID found: {latest_timestamp}")
 
-        # Check if the server responded with 200 OK
-        if response.status_code == 200:
-            print("Success! HTTP 200 OK.")
-            data = response.json()
+    # Step 3: Construct the URL for the actual energy data
+    data_url = f"https://www.smard.de/app/chart_data/4067/DE/4067_DE_quarterhour_{latest_timestamp}.json"
 
-            # The API returns a list of available timestamp files
-            timestamps = data.get("timestamps", [])
-            print(
-                f"Connected successfully. Found {len(timestamps)} data points available for Wind Onshore.")
-        else:
-            print(
-                f"Connection failed. Server returned HTTP Status: {response.status_code}")
+    print("Downloading Wind Onshore generation data...")
+    data_response = requests.get(data_url, headers=headers)
+    series_data = data_response.json().get("series", [])
 
-    except requests.exceptions.RequestException as e:
-        print(f"A network error occurred: {e}")
+    # Step 4: Convert the raw JSON array into a Pandas DataFrame
+    df = pd.DataFrame(series_data, columns=["Timestamp", "Megawatts"])
+
+    # Clean the data: Convert the Unix timestamp to a readable datetime format
+    df['Datetime'] = pd.to_datetime(df['Timestamp'], unit='ms')
+
+    # Reorder columns for readability and drop the raw timestamp
+    df = df[['Datetime', 'Megawatts']]
+
+    print("\n--- Live Wind Onshore Generation (Last 5 records) ---")
+    print(df.tail())
 
 
 if __name__ == "__main__":
-    test_smard_connection()
+    get_latest_wind_data()
