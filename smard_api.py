@@ -36,6 +36,9 @@ def get_latest_wind_data():
     # Reorder columns for readability and drop the raw timestamp
     df = df[['Datetime', 'Megawatts']]
 
+    # Drop future time slots or missing sensor data
+    df = df.dropna(subset=['Megawatts'])
+
     print("\n--- Live Wind Onshore Generation (Last 5 records) ---")
     print(df.tail())
 
