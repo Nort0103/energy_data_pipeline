@@ -5,7 +5,6 @@ import sqlite3
 
 
 def get_latest_wind_data():
-    # Step 1: Get the list of available timestamps
     index_url = "https://www.smard.de/app/chart_data/4067/DE/index_quarterhour.json"
     headers = {"Accept": "application/json"}
 
@@ -17,39 +16,52 @@ def get_latest_wind_data():
         print("Error: No timestamps found.")
         return
 
-    # Step 2: Extract the most recent timestamp
     latest_timestamp = timestamps[-1]
-
-    # Step 3: Construct the URL and download data
     data_url = f"https://www.smard.de/app/chart_data/4067/DE/4067_DE_quarterhour_{latest_timestamp}.json"
 
     print("Downloading Wind Onshore generation data...")
     data_response = requests.get(data_url, headers=headers)
     series_data = data_response.json().get("series", [])
 
-    # Step 4: Convert to Pandas DataFrame and clean
     df = pd.DataFrame(series_data, columns=["Timestamp", "Megawatts"])
     df['Datetime'] = pd.to_datetime(df['Timestamp'], unit='ms')
     df = df[['Datetime', 'Megawatts']]
     df = df.dropna(subset=['Megawatts'])
 
-    print("\n--- Live Wind Onshore Generation (Last 5 records) ---")
-    print(df.tail())
-
-    # Step 5: Save to SQLite Database
     print("\nConnecting to local database...")
     db_connection = sqlite3.connect('energy_data.db')
 
-    # Write the dataframe to a SQL table named 'wind_onshore'
-    # 'append' means it will add new rows to existing data without deleting the old stuff
-    df.to_sql('wind_onshore', con=db_connection,
-              if_exists='append', index=False)
+    # --- BULLETPROOF DEDUPLICATION LOGIC ---
+    # 1. Ask SQLite's master record if our table exists yet
+    table_check_query = "SELECT name FROM sqlite_master WHERE type='table' AND name='wind_onshore'"
+    table_exists = not pd.read_sql(table_check_query, db_connection).empty
+
+    if table_exists:
+        # 2. Table exists, check for the newest date
+        max_date_query = "SELECT MAX(Datetime) FROM wind_onshore"
+        max_date_df = pd.read_sql(max_date_query, db_connection)
+        max_date_str = max_date_df.iloc[0, 0]
+
+        if max_date_str:
+            max_date = pd.to_datetime(max_date_str)
+            # Filter the dataframe to ONLY include rows newer than the database
+            df = df[df['Datetime'] > max_date]
+            print(
+                f"Database found. Checking for records newer than {max_date}...")
+    else:
+        print("No existing table found. Creating fresh database table...")
+
+    # --- INSERTION LOGIC ---
+    if not df.empty:
+        print(f"Inserting {len(df)} new records...")
+        df.to_sql('wind_onshore', con=db_connection,
+                  if_exists='append', index=False)
+        print("Success! Data securely saved.")
+    else:
+        print("Database is already up to date. No new records inserted.")
 
     db_connection.close()
-    print("Success! Data securely saved to energy_data.db")
 
 
-if __name__ == "__main__":
-    get_latest_wind_data()
 if __name__ == "__main__":
     get_latest_wind_data()
