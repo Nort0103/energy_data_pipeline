@@ -1,6 +1,7 @@
 import requests
 import pandas as pd
 from datetime import datetime
+import sqlite3
 
 
 def get_latest_wind_data():
@@ -16,32 +17,39 @@ def get_latest_wind_data():
         print("Error: No timestamps found.")
         return
 
-    # Step 2: Extract the most recent timestamp (the last one in the list)
+    # Step 2: Extract the most recent timestamp
     latest_timestamp = timestamps[-1]
-    print(f"Latest timestamp ID found: {latest_timestamp}")
 
-    # Step 3: Construct the URL for the actual energy data
+    # Step 3: Construct the URL and download data
     data_url = f"https://www.smard.de/app/chart_data/4067/DE/4067_DE_quarterhour_{latest_timestamp}.json"
 
     print("Downloading Wind Onshore generation data...")
     data_response = requests.get(data_url, headers=headers)
     series_data = data_response.json().get("series", [])
 
-    # Step 4: Convert the raw JSON array into a Pandas DataFrame
+    # Step 4: Convert to Pandas DataFrame and clean
     df = pd.DataFrame(series_data, columns=["Timestamp", "Megawatts"])
-
-    # Clean the data: Convert the Unix timestamp to a readable datetime format
     df['Datetime'] = pd.to_datetime(df['Timestamp'], unit='ms')
-
-    # Reorder columns for readability and drop the raw timestamp
     df = df[['Datetime', 'Megawatts']]
-
-    # Drop future time slots or missing sensor data
     df = df.dropna(subset=['Megawatts'])
 
     print("\n--- Live Wind Onshore Generation (Last 5 records) ---")
     print(df.tail())
 
+    # Step 5: Save to SQLite Database
+    print("\nConnecting to local database...")
+    db_connection = sqlite3.connect('energy_data.db')
 
+    # Write the dataframe to a SQL table named 'wind_onshore'
+    # 'append' means it will add new rows to existing data without deleting the old stuff
+    df.to_sql('wind_onshore', con=db_connection,
+              if_exists='append', index=False)
+
+    db_connection.close()
+    print("Success! Data securely saved to energy_data.db")
+
+
+if __name__ == "__main__":
+    get_latest_wind_data()
 if __name__ == "__main__":
     get_latest_wind_data()
