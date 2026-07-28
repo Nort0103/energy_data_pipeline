@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  energy-pipeline:
+    build: .
+    container_name: smard_data_ingestion
+    # This volume links the container's /app folder to your VS Code folder
+    # so the SQLite database updates are saved locally!
+    volumes:
+      - .:/app
