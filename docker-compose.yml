@@ -1,10 +1,20 @@
 version: '3.8'
 
 services:
-  energy-pipeline:
+  # 1. The Backend Data Pipeline
+  pipeline:
     build: .
-    container_name: smard_data_ingestion
-    # This volume links the container's /app folder to your VS Code folder
-    # so the SQLite database updates are saved locally!
+    command: python smard_api.py
     volumes:
       - .:/app
+
+  # 2. The Frontend Streamlit Dashboard
+  dashboard:
+    build: .
+    command: streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501" # Exposes the web server to your local browser
+    volumes:
+      - .:/app
+    depends_on:
+      - pipeline
